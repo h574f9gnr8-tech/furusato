@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ふるさと納税 上限チェッカー</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Old+Mincho:wght@700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: 一枚の申告書のような縦長1カラム。入力欄には「どの書類のどの欄か」を必ず添える */
+:root{
+  --bg:#f6f7f4; --paper:#ffffff; --ink:#1f2a27; --muted:#5d6b66; --line:#d6ddd8;
+  --accent:#2f6b57; --accent-soft:#e3efe9; --warn:#b5482f; --warn-soft:#f8e6e0; --ok:#2f6b57;
+  --display:"Zen Old Mincho",serif; --body:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#151b19;--paper:#1d2522;--ink:#e6ece9;--muted:#9aaaa3;--line:#33403b;
+  --accent:#7cc3a6;--accent-soft:#22362e;--warn:#ec8a70;--warn-soft:#3a2520;--ok:#7cc3a6;color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#151b19;--paper:#1d2522;--ink:#e6ece9;--muted:#9aaaa3;--line:#33403b;
+  --accent:#7cc3a6;--accent-soft:#22362e;--warn:#ec8a70;--warn-soft:#3a2520;--ok:#7cc3a6;color-scheme:dark}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.75;margin:0}
+[hidden]{display:none!important}
+.wrap{max-width:760px;margin:0 auto;padding-inline:16px;padding-block:28px 56px;display:grid;gap:22px}
+h1{font-family:var(--display);font-size:1.75rem;line-height:1.3;margin:0;text-wrap:balance}
+.lead{color:var(--muted);margin:4px 0 0}
+h2{font-size:1.1rem;margin:0 0 4px;text-wrap:balance}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
+.tab{font:inherit;font-weight:700;background:none;border:0;border-bottom:3px solid transparent;color:var(--muted);padding:8px 12px;cursor:pointer}
+.tab[aria-selected="true"]{color:var(--accent);border-color:var(--accent)}
+.tab:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.panel{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:20px 18px;display:grid;gap:18px}
+.fields{display:grid;gap:16px}
+.group{display:grid;gap:12px;border-left:3px solid var(--line);padding-left:12px}
+.gtitle{font-size:.8rem;font-weight:700;color:var(--muted);letter-spacing:.04em}
+.f{display:grid;gap:4px;min-width:0}
+.f label{font-weight:700;font-size:.92rem}
+.src{font-size:.78rem;color:var(--muted)}
+.src b{color:var(--ink);font-weight:500}
+input,select{font:inherit;font-family:var(--mono);font-size:1rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:8px 10px;width:100%;max-width:300px;box-sizing:border-box}
+select{font-family:var(--body);font-size:.92rem;max-width:100%}
+.row2{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}
+.calc{font-size:.85rem;color:var(--accent);font-family:var(--mono)}
+.result{border-top:2px solid var(--ink);padding-top:14px;display:grid;gap:12px}
+.big{font-family:var(--mono);font-size:2rem;line-height:1.2;font-variant-numeric:tabular-nums}
+.big small{font-family:var(--body);font-size:.9rem;color:var(--muted);margin-left:4px}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+td{padding:6px 0;border-bottom:1px dashed var(--line);vertical-align:top}
+td.n{text-align:right;font-family:var(--mono);white-space:nowrap;padding-left:12px}
+tr.sum td{border-bottom:0;font-weight:700}
+tr.head td{font-weight:700;color:var(--muted);font-size:.82rem;border-bottom:1px solid var(--line);padding-top:12px}
+tr.plus td.n{color:var(--ok)}
+tr.minus td.n{color:var(--warn)}
+.badge{display:inline-block;font-weight:700;font-size:.85rem;padding:3px 10px;border-radius:999px}
+.badge.ok{background:var(--accent-soft);color:var(--ok)}
+.badge.ng{background:var(--warn-soft);color:var(--warn)}
+.note{font-size:.85rem;color:var(--muted);margin:0}
+.ex{font-size:.78rem;color:var(--warn);font-weight:700}
+details{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:14px 18px}
+summary{font-weight:700;cursor:pointer}
+details ul{margin:10px 0 0;padding-left:1.2em;display:grid;gap:6px}
+.law li{font-size:.9rem}
+.law a{color:var(--accent)}
+.formula{font-family:var(--mono);font-size:.85rem;background:var(--bg);border-radius:4px;padding:8px 10px;overflow-x:auto;white-space:nowrap;list-style:none}
+footer{font-size:.8rem;color:var(--muted)}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1>ふるさと納税 上限チェッカー</h1>
+    <p class="lead">手元の書類の数字を入れるだけで、①今年いくらまで寄付できるか、②昨年の寄付が上限内だったかを確認できます。給与・不動産所得・医療費控除などはすべて書類の数字に反映済みなので、そのまま使えます。</p>
+  </header>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" id="t1" aria-selected="true" aria-controls="p1">① 今年の上限を出す</button>
+    <button class="tab" role="tab" id="t2" aria-selected="false" aria-controls="p2">② 昨年の結果を検証</button>
+  </div>
+
+  <!-- ① 上限 -->
+  <section class="panel" id="p1" role="tabpanel" aria-labelledby="t1">
+    <div>
+      <h2>今年の寄付上限(自己負担2,000円で収まる額)</h2>
+      <p class="note">昨年の書類を基準に、今年の所得の見込みで補正します。<span class="ex">初期値は例です</span></p>
+    </div>
+    <div class="fields">
+      <div class="group">
+        <span class="gtitle">住民税決定通知書(今年6月ごろ届いたもの)</span>
+        <div class="f">
+          <label for="a_type">通知書の書式</label>
+          <select id="a_type">
+            <option value="mae">「税額控除前所得割額」の欄がある</option>
+            <option value="ato">「所得割額」の欄しかない</option>
+          </select>
+        </div>
+        <div class="row2" data-type="mae">
+          <div class="f">
+            <label for="a_mae">税額控除前所得割額(市＋県)</label>
+            <input id="a_mae" inputmode="numeric" value="365,000">
+            <span class="src">市と県の<b>税額控除前所得割額</b>を足した額</span>
+          </div>
+          <div class="f">
+            <label for="a_chosei">調整控除額(市＋県)</label>
+            <input id="a_chosei" inputmode="numeric" value="2,500">
+            <span class="src">「摘要」欄。上限は調整控除を引いた後の額で決まるため差し引く</span>
+          </div>
+        </div>
+        <div class="fields" data-type="ato" hidden>
+          <div class="row2">
+            <div class="f">
+              <label for="a_wari">所得割額(市＋県)</label>
+              <input id="a_wari" inputmode="numeric" value="324,300">
+              <span class="src">「税額」欄の<b>市民税の所得割額＋県民税の所得割額</b>。均等割額は入れない</span>
+            </div>
+            <div class="f">
+              <label for="a_kifu">寄附金税額控除額(市＋県)</label>
+              <input id="a_kifu" inputmode="numeric" value="38,198">
+              <span class="src">「摘要」欄。所得割額から引かれているので足し戻す。昨年寄付していなければ0</span>
+            </div>
+          </div>
+          <div class="f">
+            <label for="a_other">住宅ローン控除・配当控除など(市＋県、あれば)</label>
+            <input id="a_other" inputmode="numeric" value="0">
+            <span class="src">「摘要」欄にある場合だけ。<b>調整控除は入れない</b></span>
+          </div>
+        </div>
+        <p class="calc" id="a_base"></p>
+      </div>
+
+      <div class="group">
+        <span class="gtitle">昨年の課税所得</span>
+        <div class="f">
+          <label for="a_srcsel">手元にある書類</label>
+          <select id="a_srcsel">
+            <option value="shinkoku">確定申告書(第一表)</option>
+            <option value="gensen">源泉徴収票のみ(給与だけの人)</option>
+          </select>
+        </div>
+        <div class="f" data-src="shinkoku">
+          <label for="a_inc">課税される所得金額</label>
+          <input id="a_inc" inputmode="numeric" value="3,500,000">
+          <span class="src"><b>確定申告書 第一表</b>「課税される所得金額」</span>
+        </div>
+        <div class="row2" data-src="gensen" hidden>
+          <div class="f">
+            <label for="a_kyuyo">給与所得控除後の金額</label>
+            <input id="a_kyuyo" inputmode="numeric" value="">
+            <span class="src"><b>源泉徴収票</b> 上段2つ目の欄</span>
+          </div>
+          <div class="f">
+            <label for="a_kojo">所得控除の額の合計額</label>
+            <input id="a_kojo" inputmode="numeric" value="">
+            <span class="src"><b>源泉徴収票</b> 上段3つ目の欄</span>
+          </div>
+        </div>
+        <p class="calc" id="a_inc_calc" hidden></p>
+      </div>
+
+      <div class="group">
+        <span class="gtitle">今年の見込み</span>
+        <div class="f">
+          <label for="a_next">今年の課税所得の見込み(空欄なら昨年と同じ)</label>
+          <input id="a_next" inputmode="numeric" value="" placeholder="例 3,900,000">
+          <span class="src">課税所得が10万円下がると、上限は約3千円下がります。医療費控除や不動産の修繕費・減価償却が増える年、退職や昇給で給与が変わる年は入れてください</span>
+        </div>
+      </div>
+    </div>
+    <div class="result" aria-live="polite">
+      <div>
+        <span class="src">寄付上限の目安</span>
+        <div class="big" id="a_limit">—</div>
+      </div>
+      <table id="a_tbl"></table>
+      <p class="note" id="a_note"></p>
+    </div>
+  </section>
+
+  <!-- ② 検証 -->
+  <section class="panel" id="p2" role="tabpanel" aria-labelledby="t2" hidden>
+    <div>
+      <h2>昨年の寄付は上限内だったか</h2>
+      <p class="note">還付金の総額には不動産所得などが混ざるため、住民税の控除額で判定します。上限を超えたのか、寄付の一部が申告から漏れたのかを見分けるため、①に入れた所得割額も使います(同じ通知書の数字です)。<span class="ex">初期値は例です</span></p>
+    </div>
+    <div class="fields">
+      <div class="group">
+        <span class="gtitle">寄付と申請</span>
+        <div class="f">
+          <label for="b_don">寄付額の合計</label>
+          <input id="b_don" inputmode="numeric" value="50,000">
+          <span class="src">寄付した年(1/1〜12/31決済分)の<b>寄附金受領証明書</b>の合計。確定申告書の「寄附金控除」欄は寄付額 − 2,000円なので、<b>その欄の額に2,000円を足した額</b>を入れる</span>
+        </div>
+        <div class="f">
+          <label for="b_mode">控除の申請方法</label>
+          <select id="b_mode">
+            <option value="kakutei">確定申告をした(青色・白色申告、医療費控除、給与のみでの申告など)</option>
+            <option value="onestop">確定申告をせず、ワンストップ特例だけを使った</option>
+          </select>
+          <span class="src">青色・白色・給与のみの申告は計算が同じです。ワンストップ特例を申請していても<b>確定申告をすれば「確定申告」</b>を選んでください(特例は無効になります)</span>
+        </div>
+      </div>
+
+      <div class="group">
+        <span class="gtitle">寄付した年の課税所得</span>
+        <div class="f">
+          <label for="b_srcsel">手元にある書類</label>
+          <select id="b_srcsel">
+            <option value="shinkoku">確定申告書(第一表)</option>
+            <option value="gensen">源泉徴収票のみ(給与だけの人)</option>
+          </select>
+        </div>
+        <div class="f" data-src="shinkoku">
+          <label for="b_inc">課税される所得金額</label>
+          <input id="b_inc" inputmode="numeric" value="3,500,000">
+          <span class="src"><b>確定申告書 第一表</b>「課税される所得金額」</span>
+        </div>
+        <div class="row2" data-src="gensen" hidden>
+          <div class="f">
+            <label for="b_kyuyo">給与所得控除後の金額</label>
+            <input id="b_kyuyo" inputmode="numeric" value="">
+            <span class="src"><b>源泉徴収票</b> 上段2つ目の欄</span>
+          </div>
+          <div class="f">
+            <label for="b_kojo">所得控除の額の合計額</label>
+            <input id="b_kojo" inputmode="numeric" value="">
+            <span class="src"><b>源泉徴収票</b> 上段3つ目の欄</span>
+          </div>
+        </div>
+        <p class="calc" id="b_inc_calc" hidden></p>
+      </div>
+
+      <div class="group">
+        <span class="gtitle">住民税決定通知書(寄付した翌年度)「摘要」欄</span>
+        <div class="row2">
+          <div class="f">
+            <label for="b_city">寄附金税額控除額(市民税)</label>
+            <input id="b_city" inputmode="numeric" value="22,919">
+          </div>
+          <div class="f">
+            <label for="b_pref">寄附金税額控除額(県民税)</label>
+            <input id="b_pref" inputmode="numeric" value="15,279">
+          </div>
+        </div>
+        <span class="src">「調整控除」は別の制度なので入れません</span>
+      </div>
+    </div>
+    <div class="result" aria-live="polite">
+      <div><span id="b_badge" class="badge ok">—</span></div>
+      <table id="b_tbl"></table>
+      <p class="note" id="b_note"></p>
+    </div>
+  </section>
+
+  <details>
+    <summary>計算のしくみ</summary>
+    <ul>
+      <li>所得税(所得控除)：寄付額 − 2,000円 を所得から差し引く。軽減額 ＝ (寄付額 − 2,000円) × 所得税率 × 1.021</li>
+      <li>住民税 基本分：(寄付額 − 2,000円) × 10%(県4%・市6%。政令指定都市は県2%・市8%)</li>
+      <li>住民税 特例分：(寄付額 − 2,000円) × (90% − 所得税率 × 1.021)。ただし<b>所得割額(調整控除後・寄附金控除前)の20%が上限</b></li>
+      <li>上限内なら 所得税軽減 ＋ 基本分 ＋ 特例分 ＝ 寄付額 − 2,000円 になる</li>
+      <li>源泉徴収票からの課税所得 ＝ 給与所得控除後の金額 − 所得控除の額の合計額(1,000円未満切り捨て)</li>
+      <li>課税所得の増減 × 10% ≒ 住民税所得割額の増減(標準税率：県4%＋市6%)</li>
+      <li class="formula">上限寄付額 ＝ 所得割額 × 20% ÷ (90% − 所得税率 × 1.021) ＋ 2,000円</li>
+    </ul>
+  </details>
+
+  <details>
+    <summary>寄付する前に確認すること</summary>
+    <ul>
+      <li><b>12月31日までに決済完了</b>した分がその年の寄付。年末はサイトや決済の締切が早まる</li>
+      <li><b>確定申告をする人はワンストップ特例が使えない</b>。不動産所得の申告(青色・白色)や医療費控除で申告するなら、申告書に寄附金控除を記入し、寄附金受領証明書を添付する</li>
+      <li>ワンストップ特例は寄付先5自治体以内。申請書は翌年1月10日必着</li>
+      <li>上限を決めるのは給与収入ではなく、<b>全所得を合算して所得控除を引いた後</b>の所得割額。不動産所得(経費・減価償却・青色申告特別控除の後)、医療費控除、扶養、社会保険料、iDeCoがすべて効く</li>
+      <li>確定申告では<b>寄附金受領証明書をすべて</b>入力・添付する。1枚漏れると、その分は控除されず全額自己負担になる</li>
+      <li>決定通知書の「調整控除」はふるさと納税とは別の控除。ただし上限の基準(所得割額)は調整控除を引いた後の額</li>
+      <li>寄付した年と通知書の年度は1年ずれる(例：2025年の寄付 → 2026年度の通知書)</li>
+      <li>迷ったら上限の9割程度に抑えると、所得の見込み違いや端数でのはみ出しを避けやすい</li>
+    </ul>
+  </details>
+
+  <details>
+    <summary>根拠となる法令</summary>
+    <ul class="law">
+      <li><a href="https://laws.e-gov.go.jp/law/340AC0000000033" target="_blank" rel="noopener">所得税法</a> 第78条：寄附金控除(特定寄附金の額 − 2,000円。寄附金は総所得金額等の40%が限度)。地方公共団体への寄附は特定寄附金に含まれる</li>
+      <li>所得税法 第89条：所得税の税率(5%〜45%の7段階)</li>
+      <li>所得税法 第73条：医療費控除(所得控除のため課税所得・所得割額を下げ、結果として上限も下がる)</li>
+      <li>東日本大震災からの復興のための施策を実施するために必要な財源の確保に関する特別措置法 第13条：復興特別所得税(所得税額の2.1%)。計算式の「×1.021」の根拠</li>
+      <li><a href="https://laws.e-gov.go.jp/law/325AC0000000226" target="_blank" rel="noopener">地方税法</a> 第37条の2(道府県民税)・第314条の7(市町村民税)：寄附金税額控除。基本分(10%)と特例控除額。特例控除額は所得割額の20%が上限</li>
+      <li>地方税法 附則第7条：寄附金税額控除に係る申告の特例(ワンストップ特例。確定申告不要の人・寄付先5団体以下)</li>
+      <li>地方税法 附則第7条の2：申告特例控除額(ワンストップ利用時、所得税の軽減相当額を住民税から控除)</li>
+      <li>地方税法 第37条・第314条の6：調整控除(人的控除の差による負担増の調整。ふるさと納税とは別制度)</li>
+      <li>返礼品の基準(返礼品の調達費は寄附額の3割以下)：総務大臣の告示による指定基準</li>
+      <li><a href="https://www.soumu.go.jp/main_sosiki/jichi_zeisei/czaisei/czaisei_seido/furusato/mechanism/deduction.html" target="_blank" rel="noopener">総務省 ふるさと納税ポータル「税金の控除について」</a></li>
+    </ul>
+  </details>
+
+  <footer>目安を出すための簡易計算です。特例分の税率区分は厳密には住民税側の課税所得(人的控除差調整額を引いた額)で決まり、税制改正で控除額が変わることもあります。最終的な判断は税務署・市区町村の税務課・税理士にご確認ください。</footer>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const num=v=>{const n=parseFloat(String(v).replace(/[,，\s円]/g,''));return isFinite(n)?n:0};
+const has=v=>String(v).replace(/[,，\s円]/g,'')!=='';
+const fmt=n=>Math.round(n).toLocaleString('ja-JP');
+const yen=n=>fmt(n)+' 円';
+function rate(inc){
+  if(inc<=0)return 0;
+  if(inc<=1950000)return .05; if(inc<=3300000)return .10; if(inc<=6950000)return .20;
+  if(inc<=9000000)return .23; if(inc<=18000000)return .33; if(inc<=40000000)return .40; return .45;
+}
+const pct=r=>(r*100).toFixed(0)+'%';
+function rows(el,list){el.innerHTML=list.map(([k,v,c])=>`<tr class="${c||''}"><td>${k}</td><td class="n">${v}</td></tr>`).join('')}
+
+// 課税所得：確定申告書 or 源泉徴収票から
+function taxable(p){
+  const mode=$(p+'_srcsel').value;
+  const panel=$(p+'_srcsel').closest('.group');
+  panel.querySelectorAll('[data-src]').forEach(el=>el.hidden=el.dataset.src!==mode);
+  const calc=$(p+'_inc_calc');
+  if(mode==='shinkoku'){calc.hidden=true;return num($(p+'_inc').value)}
+  const v=Math.max(0,Math.floor((num($(p+'_kyuyo').value)-num($(p+'_kojo').value))/1000)*1000);
+  calc.hidden=false;
+  calc.textContent=`→ 課税所得 ${yen(v)}(1,000円未満切り捨て)`;
+  return v;
+}
+
+let wariBase=0;
+function calcA(){
+  const type=$('a_type').value;
+  $('a_type').closest('.group').querySelectorAll('[data-type]').forEach(el=>el.hidden=el.dataset.type!==type);
+  const base0=Math.max(0,type==='mae'
+    ?num($('a_mae').value)-num($('a_chosei').value)
+    :num($('a_wari').value)+num($('a_kifu').value)+num($('a_other').value));
+  wariBase=base0;
+  $('a_base').textContent=`→ 上限計算に使う所得割額 ${yen(base0)}`;
+  const inc0=taxable('a');
+  const incNew=has($('a_next').value)?num($('a_next').value):inc0;
+  const base=Math.max(0,base0+(incNew-inc0)*.1);
+  const r=rate(incNew), s=.9-r*1.021;
+  const cap=base*.2, limit=cap/s+2000;
+  $('a_limit').innerHTML=base>0?`${fmt(limit)}<small>円まで</small>`:'—';
+  const list=[];
+  if(incNew!==inc0)list.push(['今年の所得割額の見込み(課税所得の増減×10%で補正)',yen(base)]);
+  list.push(
+    ['所得税率(今年の課税所得の見込みから判定)',pct(r)],
+    ['特例分の割合 90% − 税率×1.021',(s*100).toFixed(3)+'%'],
+    ['特例分の上限(所得割額の20%)',yen(cap)],
+    ['安全側の目安(上限の9割)',yen(limit*.9),'sum']
+  );
+  rows($('a_tbl'),list);
+  $('a_note').textContent=base>0?'この額までなら、自己負担は2,000円で収まる見込みです。課税所得が税率の境目(195万・330万・695万・900万円)の近くにある場合は、区分が変わると上限も変わります。':'所得割額を入れてください。';
+}
+
+function calcB(){
+  const D=num($('b_don').value), base=Math.max(D-2000,0);
+  const r=rate(taxable('b')), s=.9-r*1.021, r2=r*1.021;
+  const actual=num($('b_city').value)+num($('b_pref').value);
+  const onestop=$('b_mode').value==='onestop';
+  const W=wariBase, cap=W*.2;
+  const full=onestop?base:base*(.1+s);            // 上限内なら住民税から引かれる額
+  const fullSpecial=base*s;
+  const capped=W>0&&fullSpecial>cap+100;
+  const gap=Math.max(0,full-actual);               // 控除されなかった額(住民税側)
+  const tol=Math.max(300,base*.01);
+  const ok=gap<=tol;
+  const recognized=Math.round(((onestop?actual:actual/(.1+s))+2000)/100)*100; // 上限内と仮定した、控除対象の寄付額
+  const itax=onestop?0:base*r2;
+  const back=actual+itax;
+  const gift=D*.3;
+  const limitPrev=W>0?cap/s+2000:0;
+  let status,note,cls='ng';
+  const over=actual-full>tol;
+  if(over){
+    status='通知書の控除額が計算より多くなっています';
+    note=`控除額が、寄付額から計算できる最大値(${yen(full)})を約${fmt(actual-full)}円上回っています。ふるさと納税の控除は寄付額 − 2,000円を超えないので、入力の組み合わせが合っていない可能性があります。寄付した年と通知書の年度(寄付の翌年度)、寄付額の合計、課税所得を確認してください。`;
+  }else if(ok){
+    status='上限内でうまく使えています';cls='ok';
+    note='期待値と通知書の控除額がほぼ一致しています。自己負担は2,000円だけで、残りは返礼品の分だけ得をした計算です。';
+  }else if(capped){
+    status=`上限を超えていました(約${fmt(gap)}円が控除されず)`;
+    note=`寄付額が上限(約${fmt(limitPrev)}円)を超えていたため、特例分が頭打ちになりました。`;
+  }else if(W>0){
+    status='上限内ですが、寄付の一部が控除に入っていません';
+    note=`上限(約${fmt(limitPrev)}円)には届いていません。通知書の控除額から逆算すると、控除の対象になった寄付額は約${fmt(recognized)}円です。確定申告書の「寄附金控除」欄が約${fmt(recognized-2000)}円になっていないか、受領証明書の入力漏れや、年末の寄付が翌年扱いになっていないかを確認してください。`;
+  }else{
+    status=`控除が約${fmt(gap)}円少なくなっています`;
+    note='上限超過か、寄付の一部が申告から漏れた可能性があります。①に所得割額を入れると、どちらかを判定できます。';
+  }
+  const badge=$('b_badge');
+  badge.textContent=status;
+  badge.className='badge '+cls;
+  const list=[['控除の判定','','head']];
+  if(W>0)list.push(['昨年の上限寄付額(①の所得割額から)',yen(limitPrev)]);
+  list.push(
+    ['所得税率(課税所得から判定)',pct(r)],
+    [onestop?'住民税控除の期待値(ワンストップは全額住民税から)':'住民税控除の期待値 (寄付−2,000)×(100%−税率×1.021)',yen(full)],
+    ['通知書の寄附金税額控除(市＋県)',yen(actual)]
+  );
+  if(!ok&&!capped&&!over)list.push(['控除の対象になった寄付額(逆算)','約 '+yen(recognized)]);
+  list.push(
+    ['ふるさと納税の収支','','head'],
+    ['寄付した額',yen(D)],
+    [onestop?'税金が安くなった額(住民税)':'税金が安くなった額(住民税＋所得税の概算)',yen(back),'plus'],
+    ['制度上の自己負担(どの人も同じ)',yen(Math.min(2000,D))]
+  );
+  if(!ok&&!over)list.push([capped?'上限超過で控除されなかった額':'控除されなかった額',yen(Math.max(0,D-back-2000)),'minus']);
+  list.push(
+    ['もらえる返礼品の価値の目安(寄付額の3割まで)','約 '+yen(gift),'plus'],
+    ['実質のお得額(返礼品の価値 − 自分で払った額)','約 '+yen(gift-(D-back)),'sum']
+  );
+  rows($('b_tbl'),list);
+  $('b_note').textContent=note+' 返礼品の価値は自治体の調達費の上限(寄付額の3割)で見た目安です。';
+}
+
+document.querySelectorAll('input,select').forEach(el=>el.addEventListener('input',()=>{calcA();calcB()}));
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
+  document.querySelectorAll('.tab').forEach(x=>{const on=x===t;x.setAttribute('aria-selected',on);$(x.getAttribute('aria-controls')).hidden=!on});
+}));
+calcA();calcB();
+</script>
+</body>
+</html>
